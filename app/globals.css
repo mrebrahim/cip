@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", "Segoe UI", system-ui, sans-serif;
+
+  --color-ink: #1b1a17;
+  --color-muted: #6b6459;
+  --color-line: #e6e1d8;
+  --color-sand: #faf8f4;
+  --color-card: #ffffff;
+  --color-brand: #1f6f5c;
+  --color-brand-dark: #185446;
+  --color-brand-soft: #e8f2ef;
+  --color-danger: #a3302a;
+  --color-danger-soft: #fbeceb;
+  --color-warn: #8a5a12;
+  --color-warn-soft: #fdf3e2;
+}
+
+html {
+  background-color: var(--color-sand);
+}
+
+body {
+  color: var(--color-ink);
+  /* Long-form Arabic needs the extra leading; it is the single biggest
+     readability decision on the document page. */
+  line-height: 1.85;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The generated document renders as a readable page, not a code block. */
+.prose-doc {
+  max-width: 68ch;
+  line-height: 1.9;
+}
+.prose-doc h1,
+.prose-doc h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-block: 2rem 0.85rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 3px solid var(--color-brand);
+}
+.prose-doc h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-block: 1.6rem 0.6rem;
+}
+.prose-doc h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-brand-dark);
+  margin-block: 1.2rem 0.4rem;
+}
+.prose-doc p {
+  margin-block: 0.75rem;
+}
+.prose-doc ul {
+  list-style: disc;
+  padding-inline-start: 1.5rem;
+  margin-block: 0.75rem;
+}
+.prose-doc li {
+  margin-block: 0.35rem;
+}
+.prose-doc strong {
+  font-weight: 700;
+}
