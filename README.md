@@ -81,35 +81,59 @@ Copy `.env.example` to `.env.local` and fill in:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same page |
 | `SUPABASE_SERVICE_ROLE_KEY` | same page — server only, never exposed |
-| `GEMINI_API_KEY` | Google Cloud — see below |
+| `GEMINI_API_KEY` | Google AI Studio / Cloud — Gemini only |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Cloud service account — Drive only, see below |
 | `CRON_SECRET` | any long random string you choose |
 
-### 2. The Google key — the part that trips people up
+### 2. Google access — this changed from the original plan
 
-One key serves **both** Gemini and Drive. For that to work, on the *same*
-Google Cloud project:
+The plan was one key serving both Gemini and Drive. **That is not possible.**
 
-1. Enable **Generative Language API**.
-2. Enable **Google Drive API**.
-3. Make sure the key is **not restricted to only one of them**. Keys created in
-   AI Studio are usually restricted by default — lift that in Cloud Console.
+Gemini works with an API key. Drive does not: the Drive API rejects API keys
+outright —
 
-The Gemini API cannot open a Drive file itself, which is why the app fetches
-the file and hands the bytes over.
+> API keys are not supported by this API. Expected OAuth2 access token or other
+> authentication credentials that assert a principal.
 
-Both a misconfigured key and a file with closed sharing return **403**. The app
-tells them apart from the error reason and says which one it is, because
-diagnosing the wrong one wastes real time.
+— and it does so **even for a file shared with "Anyone with the link"**. This
+was verified against a real public file, so it is not a key misconfiguration
+and enabling the Drive API does not fix it. Drive requires a principal; an API
+key is not one.
+
+So there are two credentials:
+
+| Variable | Used for |
+|---|---|
+| `GEMINI_API_KEY` | Gemini only — transcription, slide reading, document build |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Drive only — reading the audio and the PDF |
+
+**Nothing changes for teachers.** A service account is a principal, so it can
+read anyone-with-the-link files exactly like a signed-in user. Teachers still
+just open sharing and paste the link.
+
+#### Creating the service account
+
+1. Google Cloud Console → IAM & Admin → Service Accounts → **Create**.
+2. Give it any name. No project roles are needed — it only reads public files.
+3. Open it → **Keys** → Add key → Create new key → **JSON**.
+4. Paste the downloaded JSON into `GOOGLE_SERVICE_ACCOUNT_JSON`, raw or
+   base64-encoded (base64 is easier to paste into the Vercel dashboard as one
+   line).
+5. Enable the **Google Drive API** on that project.
+
+If you would rather not rely on public links at all, share the lecture folder
+directly with the service account's email address (`...@....iam.gserviceaccount.com`).
+That works too, and is stricter — files need not be public at all.
 
 ### 3. Drive sharing
 
-Files must be shared as **"Anyone with the link"**. An API key cannot see
-private files. When sharing is closed the teacher is told exactly that, in
-Arabic, on the form — before the lecture is recorded.
+Files must be either shared as **"Anyone with the link"** or shared directly
+with the service account's email address.
 
-The more secure alternative is a Service Account with files shared to its
-address. That is also what would be required to write documents *back* to
-Drive, since an API key can read from Drive but cannot write to it.
+When neither is true, Drive returns a 404 rather than admitting the file
+exists, so the app reports it as closed sharing — which is the usual cause —
+and says exactly what to change, in Arabic, on the form, before the lecture is
+recorded.
 
 ### 4. Database
 
@@ -188,7 +212,7 @@ GET  /api/cron/retry                Safety net for stalled lectures
 |---|---|---|
 | 1 | Can a teacher delete their own lecture? | Yes — their own only; admins can delete any. Change the `lectures_delete` policy to make it admin-only. |
 | 2 | When a teacher is removed from a subject, do their documents stay or move? | They stay with the subject. Removing an assignment only removes the assignment. |
-| 3 | Should documents be written back to Drive? | No. Manual download only — writing to Drive needs a Service Account, not an API key. |
+| 3 | Should documents be written back to Drive? | No, manual download only. Note this is now cheap to add if wanted: the service account already exists, and only its scope would need widening from `drive.readonly`. |
 
 The Drive hint on the new-lecture form uses a drawn stand-in for the share
 dialog. Swapping in a real screenshot means replacing one `<svg>` in

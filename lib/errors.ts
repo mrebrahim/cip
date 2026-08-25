@@ -10,12 +10,13 @@ export type ErrorCode =
   | "invalid_drive_link"
   | "google_native_file"
   | "sharing_locked"
-  | "file_not_found"
   | "wrong_audio_type"
   | "wrong_slides_type"
   | "drive_api_disabled"
   | "key_restricted"
   | "invalid_key"
+  | "drive_auth_missing"
+  | "drive_auth_failed"
   | "transcribe_failed"
   | "slides_failed"
   | "document_failed"
@@ -27,9 +28,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   google_native_file:
     "الرابط ده لملف متعمل على جوجل مش ملف مرفوع — ارفع الملف نفسه على درايف وانسخ رابطه.",
   sharing_locked:
-    "مشاركة الملف مقفولة — افتحها على (أي شخص لديه الرابط) وجرّب تاني.",
-  file_not_found:
-    "مفيش ملف على الرابط ده — اتأكد إنك نسخت الرابط كامل وإن الملف لسه موجود.",
+    "مشاركة الملف مقفولة أو الرابط غلط — افتح المشاركة على (أي شخص لديه الرابط) وجرّب تاني.",
   wrong_audio_type:
     "الملف ده مش تسجيل صوتي — اتأكد إنك حطيت رابط التسجيل في الخانة الصح.",
   wrong_slides_type:
@@ -39,6 +38,10 @@ const MESSAGES: Record<ErrorCode, string> = {
   key_restricted:
     "فيه إعداد ناقص في النظام — كلّم المسؤول وقوله إن الصلاحية محدودة.",
   invalid_key: "فيه إعداد ناقص في النظام — كلّم المسؤول.",
+  drive_auth_missing:
+    "فيه إعداد ناقص في النظام — كلّم المسؤول وقوله إن صلاحية قراءة الملفات مش متظبطة.",
+  drive_auth_failed:
+    "مقدرناش نوصل لملفاتك على درايف دلوقتي — جرّب تاني، ولو فضلت اكلّم المسؤول.",
   transcribe_failed:
     "التسجيل مقدرناش نفرّغه — اتأكد إن الملف صوت سليم وجرّب تاني.",
   slides_failed: "الشرائح مقدرناش نقراها — اتأكد إن ملف الـ PDF سليم وجرّب تاني.",
@@ -50,6 +53,8 @@ const CONFIG_CODES = new Set<ErrorCode>([
   "drive_api_disabled",
   "key_restricted",
   "invalid_key",
+  "drive_auth_missing",
+  "drive_auth_failed",
 ]);
 
 export class AppError extends Error {

@@ -1,4 +1,5 @@
 import { AppError } from "./errors";
+import { driveAccessToken } from "./google-auth";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
 
@@ -52,11 +53,14 @@ export function parseDriveLink(raw: string): string {
 }
 
 /**
- * Drive and Gemini share one API key, so a 403 here has two very different
- * causes that are easy to confuse: the key cannot reach the Drive API at all
- * (a setup problem, the admin's to fix), or the file simply is not shared (the
- * teacher's to fix). Diagnosing the wrong one wastes real time, so the reason
- * string decides rather than the status code.
+ * Under a service account a locked file reads as missing: Drive will not
+ * confirm that a file exists to a principal that cannot see it. So a 404 is
+ * far more often "sharing is closed" than "this file is gone", and the message
+ * has to cover both without guessing wrong.
+ *
+ * A setup failure (no credentials, bad key, Drive API switched off) is kept
+ * distinct, because it is the admin's problem and a teacher can do nothing
+ * about it.
  */
 function translateDriveError(status: number, body: string): AppError {
   let reason = "";
@@ -71,9 +75,6 @@ function translateDriveError(status: number, body: string): AppError {
 
   const haystack = `${reason} ${message}`.toLowerCase();
 
-  if (haystack.includes("api key not valid") || haystack.includes("api_key_invalid")) {
-    return new AppError("invalid_key", message);
-  }
   if (
     haystack.includes("accessnotconfigured") ||
     haystack.includes("has not been used in project") ||
@@ -82,29 +83,28 @@ function translateDriveError(status: number, body: string): AppError {
     return new AppError("drive_api_disabled", message);
   }
   if (
-    haystack.includes("api_key_service_blocked") ||
-    haystack.includes("blocked") ||
-    haystack.includes("api_key_http_referrer_blocked")
+    haystack.includes("api keys are not supported") ||
+    haystack.includes("credentials_missing") ||
+    haystack.includes("invalid_grant") ||
+    status === 401
   ) {
+    return new AppError("drive_auth_failed", message);
+  }
+  if (haystack.includes("api_key_service_blocked")) {
     return new AppError("key_restricted", message);
   }
 
-  // Everything left over is the ordinary case: an API key can only read files
-  // shared to "Anyone with the link", so a private file reads as missing.
-  if (status === 404) return new AppError("file_not_found", message);
   return new AppError("sharing_locked", message);
 }
 
-function apiKey() {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new AppError("invalid_key", "GEMINI_API_KEY is not set");
-  return key;
+async function authHeaders() {
+  return { Authorization: `Bearer ${await driveAccessToken()}` };
 }
 
 /** Reads a file's metadata — the cheap check that runs before a lecture row exists. */
 export async function getDriveFile(fileId: string): Promise<DriveFile> {
-  const url = `${DRIVE_API}/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size&supportsAllDrives=true&key=${apiKey()}`;
-  const res = await fetch(url);
+  const url = `${DRIVE_API}/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size&supportsAllDrives=true`;
+  const res = await fetch(url, { headers: await authHeaders() });
 
   if (!res.ok) throw translateDriveError(res.status, await res.text());
 
@@ -157,8 +157,8 @@ export async function validateDriveLink(
  * to hand it to Gemini — nothing about it is ever written to Supabase.
  */
 export async function downloadDriveFile(fileId: string): Promise<ArrayBuffer> {
-  const url = `${DRIVE_API}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true&key=${apiKey()}`;
-  const res = await fetch(url);
+  const url = `${DRIVE_API}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
+  const res = await fetch(url, { headers: await authHeaders() });
   if (!res.ok) throw translateDriveError(res.status, await res.text());
   return res.arrayBuffer();
 }
