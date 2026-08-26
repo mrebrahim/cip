@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { processLecture } from "@/lib/pipeline";
+import { runNextStage } from "@/lib/pipeline";
 import { toAppError } from "@/lib/errors";
 
 export const runtime = "nodejs";
@@ -36,8 +36,10 @@ export async function POST(
   }
 
   try {
-    await processLecture(id);
-    return NextResponse.json({ ok: true });
+    // One stage per request. The page calls back for the next one, which keeps
+    // every request short enough to finish inside the platform's limit.
+    const status = await runNextStage(id);
+    return NextResponse.json({ ok: true, status, done: status === "ready" });
   } catch (err) {
     // The pipeline has already written the failure onto the lecture row, so the
     // page will show it whether or not the browser is still waiting here.

@@ -114,15 +114,28 @@ async function generate(
     if (!res.ok) throw new AppError("unknown", `gemini ${res.status}: ${await res.text()}`);
 
     const data = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      candidates?: {
+        finishReason?: string;
+        content?: { parts?: { text?: string }[] };
+      }[];
     };
-    const text = data.candidates?.[0]?.content?.parts
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts
       ?.map((p) => p.text ?? "")
       .join("")
       .trim();
 
-    if (text) return text;
-    lastDetail = "model returned an empty response";
+    if (text) {
+      // A response cut off at the output ceiling still looks like a perfectly
+      // good string. Silently storing a half-transcribed two-hour lecture is
+      // far worse than failing, because the document built on top of it would
+      // look finished and simply be missing the second half.
+      if (candidate?.finishReason === "MAX_TOKENS") {
+        throw new AppError("output_truncated", `hit maxOutputTokens (${opts.maxOutputTokens})`);
+      }
+      return text;
+    }
+    lastDetail = `model returned no text (finishReason: ${candidate?.finishReason ?? "none"})`;
   }
 
   throw new AppError("unknown", `gemini gave up after retries — ${lastDetail}`);

@@ -50,7 +50,9 @@ export async function GET(request: Request) {
   const resumed: string[] = [];
   for (const lecture of stalled ?? []) {
     try {
-      await processLecture(lecture.id);
+      // No browser here to drive the next stage, so run them back to back
+      // within whatever request budget is left.
+      await processLecture(lecture.id, 200_000);
       resumed.push(lecture.id);
     } catch {
       // processLecture already recorded the failure on the row; keep sweeping.

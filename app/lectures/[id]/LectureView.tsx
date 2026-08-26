@@ -31,13 +31,36 @@ export function LectureView({
   const [copied, setCopied] = useState(false);
   const kickedOff = useRef(false);
 
-  // A brand new lecture is started by whoever lands on it. A lecture already
-  // mid-stage is left alone: the original request is probably still running,
-  // and if it died the cron sweep resumes it.
+  // The pipeline advances one stage per request, so the page drives it: call,
+  // wait for that stage to land, call again. Each request stays short, which
+  // is what keeps a long lecture inside the platform's request limit.
+  //
+  // A lecture already mid-stage is left alone on load — another request is
+  // probably still running it, and driving it again would duplicate the work.
   useEffect(() => {
     if (kickedOff.current || initialStatus !== "pending") return;
     kickedOff.current = true;
-    void fetch(`/api/lectures/${id}/process`, { method: "POST" }).catch(() => {});
+
+    let cancelled = false;
+
+    (async () => {
+      // Three stages, plus a little headroom for a stage that reports back
+      // without having advanced.
+      for (let pass = 0; pass < 5 && !cancelled; pass++) {
+        try {
+          const res = await fetch(`/api/lectures/${id}/process`, { method: "POST" });
+          const data = (await res.json()) as { done?: boolean };
+          if (!res.ok || data.done) return;
+        } catch {
+          // The lecture row carries the outcome; the poll below will show it.
+          return;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id, initialStatus]);
 
   useEffect(() => {
@@ -69,11 +92,19 @@ export function LectureView({
     setRetrying(true);
     setError(null);
     setStatus("pending");
-    try {
-      await fetch(`/api/lectures/${id}/process`, { method: "POST" });
-    } catch {
-      // The lecture row carries the outcome either way; the poll will show it.
+
+    // Same one-stage-per-call loop as the initial run, starting from whichever
+    // stage last succeeded rather than from the beginning.
+    for (let pass = 0; pass < 5; pass++) {
+      try {
+        const res = await fetch(`/api/lectures/${id}/process`, { method: "POST" });
+        const data = (await res.json()) as { done?: boolean };
+        if (!res.ok || data.done) break;
+      } catch {
+        break;
+      }
     }
+
     setRetrying(false);
     router.refresh();
   }

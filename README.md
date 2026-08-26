@@ -31,9 +31,28 @@ still on the form. Processing then runs in four stages:
 | 3 | Merge into a document | `document_md` |
 | 4 | Ready | — |
 
-**Every stage is persisted the moment it completes.** A failure while building
-the document does not throw away the transcription; a retry resumes from the
-last completed stage.
+**Every stage is persisted the moment it completes**, and **the pipeline
+advances one stage per request**. A failure while building the document does
+not throw away the transcription; a retry resumes from the last completed
+stage.
+
+One stage per request is what keeps a long lecture inside the platform's
+request limit. The server sits waiting on Gemini for the whole call and waiting
+counts against the limit, so three stages in one request is what would blow it
+— not any single stage. Measured on real audio, transcription costs about
+**0.02 seconds per second of audio**, so a two-hour lecture transcribes in
+roughly **155 seconds**, comfortably inside the 300s Hobby ceiling.
+
+If a single stage ever does exceed the limit on its own, subdividing further
+will not help and the work has to become genuinely asynchronous (Gemini's batch
+mode, which trades a predictable few minutes for an unpredictable few hours).
+
+### Truncated output
+
+A response cut off at the model's output ceiling comes back looking like a
+perfectly good string. Storing one silently would produce a document that looks
+finished and is simply missing half the lecture, so `finishReason: MAX_TOKENS`
+is treated as a failure and the teacher is told to split the recording.
 
 Supabase stores text only. The audio and the PDF stay on Drive and are held in
 memory just long enough to hand them to Gemini.

@@ -5,14 +5,19 @@ import { AppError, toAppError } from "./errors";
 import type { Lecture, LectureStatus } from "./types";
 
 /**
- * Runs the pipeline for one lecture, resuming from the last stage that was
- * persisted rather than starting over.
+ * The pipeline advances one stage per call.
  *
- * Each stage is written the moment it completes. That is the whole point: a
- * failure while building the document must not throw away a two-hour
- * transcription and the API call that produced it.
+ * Doing all three in a single request is what pushed a long lecture past the
+ * platform's request limit: the server sits waiting on Gemini the whole time,
+ * and waiting counts. One stage per request keeps every request short, and
+ * costs nothing, because each stage is persisted as it finishes anyway — the
+ * next call simply picks up where this one stopped.
+ *
+ * This does not make the limit disappear. If transcribing a single lecture
+ * exceeds it on its own, the work has to become genuinely asynchronous
+ * (Gemini's batch mode) rather than merely subdivided.
  */
-export async function processLecture(lectureId: string): Promise<void> {
+export async function runNextStage(lectureId: string): Promise<LectureStatus> {
   const db = createAdminClient();
 
   const { data, error } = await db
@@ -24,14 +29,10 @@ export async function processLecture(lectureId: string): Promise<void> {
   if (error || !data) throw new AppError("unknown", `lecture ${lectureId} not found`);
 
   const lecture = data as Lecture & { subjects: { name: string } | null };
-  if (lecture.status === "ready" && lecture.document_md) return;
+  if (lecture.status === "ready" && lecture.document_md) return "ready";
 
-  const setStage = async (status: LectureStatus) => {
-    await db
-      .from("lectures")
-      .update({ status, error_message: null })
-      .eq("id", lectureId);
-  };
+  const setStage = (status: LectureStatus) =>
+    db.from("lectures").update({ status, error_message: null }).eq("id", lectureId);
 
   try {
     // Claiming the lecture moves stage_updated_at, so a cron pass running at
@@ -42,9 +43,9 @@ export async function processLecture(lectureId: string): Promise<void> {
       .eq("id", lectureId);
 
     // Stage 1 — transcribe the recording.
-    let transcript = lecture.transcript;
-    if (!transcript) {
+    if (!lecture.transcript) {
       await setStage("transcribing");
+      let transcript: string;
       try {
         const meta = await getDriveFile(lecture.audio_file_id);
         const bytes = await downloadDriveFile(lecture.audio_file_id);
@@ -54,12 +55,13 @@ export async function processLecture(lectureId: string): Promise<void> {
         throw promote(err, "transcribe_failed");
       }
       await db.from("lectures").update({ transcript }).eq("id", lectureId);
+      return "transcribing";
     }
 
     // Stage 2 — read the slide deck.
-    let slidesText = lecture.slides_text;
-    if (!slidesText) {
+    if (!lecture.slides_text) {
       await setStage("reading_slides");
+      let slidesText: string;
       try {
         const bytes = await downloadDriveFile(lecture.slides_file_id);
         const uri = await uploadFile(
@@ -72,6 +74,7 @@ export async function processLecture(lectureId: string): Promise<void> {
         throw promote(err, "slides_failed");
       }
       await db.from("lectures").update({ slides_text: slidesText }).eq("id", lectureId);
+      return "reading_slides";
     }
 
     // Stage 3 — merge the two into the document.
@@ -82,8 +85,8 @@ export async function processLecture(lectureId: string): Promise<void> {
         documentMd = await buildDocument({
           title: lecture.title,
           subject: lecture.subjects?.name ?? "",
-          transcript,
-          slidesText,
+          transcript: lecture.transcript,
+          slidesText: lecture.slides_text,
         });
       } catch (err) {
         throw promote(err, "document_failed");
@@ -92,10 +95,11 @@ export async function processLecture(lectureId: string): Promise<void> {
         .from("lectures")
         .update({ document_md: documentMd, status: "ready", error_message: null })
         .eq("id", lectureId);
-      return;
+      return "ready";
     }
 
     await setStage("ready");
+    return "ready";
   } catch (err) {
     const appError = toAppError(err);
     // A setup problem is logged with its real cause and shown as a generic
@@ -113,11 +117,38 @@ export async function processLecture(lectureId: string): Promise<void> {
 }
 
 /**
+ * Advances a lecture as far as the remaining time allows.
+ *
+ * The browser drives one stage per request while the teacher waits. The cron
+ * sweep has no browser to drive it, so it runs stages back to back until the
+ * lecture is done or its own request budget runs low.
+ */
+export async function processLecture(
+  lectureId: string,
+  budgetMs = 200_000,
+): Promise<LectureStatus> {
+  const deadline = Date.now() + budgetMs;
+  let status: LectureStatus = "pending";
+
+  // Four passes covers three stages plus the terminal one; the loop exits on
+  // "ready" long before that in practice.
+  for (let pass = 0; pass < 4; pass++) {
+    status = await runNextStage(lectureId);
+    if (status === "ready") break;
+    if (Date.now() > deadline) break;
+  }
+
+  return status;
+}
+
+/**
  * Keeps a precise cause (sharing was revoked mid-run, key misconfigured) and
  * falls back to the stage's own message only for causes we cannot name.
  */
 function promote(err: unknown, fallback: "transcribe_failed" | "slides_failed" | "document_failed") {
   const appError = toAppError(err);
   if (appError.code === "unknown") return new AppError(fallback, appError.detail);
+  // "too long" and "sharing revoked" are precise and actionable; a generic
+  // stage failure would throw that away.
   return appError;
 }

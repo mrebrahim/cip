@@ -20,6 +20,7 @@ export type ErrorCode =
   | "transcribe_failed"
   | "slides_failed"
   | "document_failed"
+  | "output_truncated"
   | "unknown";
 
 const MESSAGES: Record<ErrorCode, string> = {
@@ -46,6 +47,8 @@ const MESSAGES: Record<ErrorCode, string> = {
     "التسجيل مقدرناش نفرّغه — اتأكد إن الملف صوت سليم وجرّب تاني.",
   slides_failed: "الشرائح مقدرناش نقراها — اتأكد إن ملف الـ PDF سليم وجرّب تاني.",
   document_failed: "حصلت مشكلة وإحنا بنكتب المستند — جرّب تاني.",
+  output_truncated:
+    "المحاضرة دي أطول من اللي نقدر نحوّله مرة واحدة — قسّمها لجزئين وحوّل كل جزء لوحده.",
   unknown: "حصلت مشكلة مش متوقعة — جرّب تاني، ولو فضلت اكلّم المسؤول.",
 };
 
