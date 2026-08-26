@@ -92,11 +92,22 @@ type Part =
  */
 async function generate(
   parts: Part[],
-  opts: { maxOutputTokens: number; thinkingBudget: number; budgetMs?: number },
+  opts: {
+    maxOutputTokens: number;
+    thinkingBudget: number;
+    budgetMs?: number;
+    minAttemptMs?: number;
+  },
 ): Promise<string> {
   // Retrying a slow call four times is how a stage silently outlives the whole
   // request. The loop gets an overall budget, not just a per-attempt one.
-  const deadline = makeDeadline(opts.budgetMs ?? 220_000);
+  const deadline = makeDeadline(opts.budgetMs ?? 270_000);
+
+  // A rejection comes back in seconds, but the call it is standing in for can
+  // take minutes. Retrying without checking the clock burns the budget on
+  // attempts and then times out on the one that would have worked, so a retry
+  // only happens while there is still room for a full-length attempt.
+  const needsRoom = opts.minAttemptMs ?? 0;
   const body = JSON.stringify({
     contents: [{ role: "user", parts }],
     generationConfig: {
@@ -108,7 +119,7 @@ async function generate(
 
   let lastDetail = "";
   for (let attempt = 0; attempt < 4; attempt++) {
-    if (attempt > 0) await sleep(2000 * 2 ** (attempt - 1));
+    if (attempt > 0) await sleep(1000 * 2 ** (attempt - 1));
     deadline.assertNotExceeded();
 
     const res = await fetchWithTimeout(
@@ -123,6 +134,11 @@ async function generate(
 
     if (res.status === 429 || res.status >= 500) {
       lastDetail = `${res.status}: ${await res.text()}`;
+      // "High demand" is Google's, not ours, and it is worth saying so rather
+      // than reporting a timeout the teacher cannot act on.
+      if (deadline.remaining() < needsRoom) {
+        throw new AppError("model_busy", lastDetail);
+      }
       continue;
     }
     if (!res.ok) throw new AppError("unknown", `gemini ${res.status}: ${await res.text()}`);
@@ -168,7 +184,7 @@ export async function transcribeAudio(fileUri: string, mimeType: string) {
 
   const text = await generate(
     [{ text: prompt }, { file_data: { mime_type: mimeType, file_uri: fileUri } }],
-    { maxOutputTokens: 65536, thinkingBudget: 0 },
+    { maxOutputTokens: 65536, thinkingBudget: 0, minAttemptMs: 200_000 },
   );
   if (!text) throw new AppError("transcribe_failed");
   return text;

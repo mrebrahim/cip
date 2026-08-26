@@ -22,6 +22,7 @@ export type ErrorCode =
   | "document_failed"
   | "output_truncated"
   | "upstream_timeout"
+  | "model_busy"
   | "stage_too_slow"
   | "unknown";
 
@@ -49,6 +50,8 @@ const MESSAGES: Record<ErrorCode, string> = {
     "التسجيل مقدرناش نفرّغه — اتأكد إن الملف صوت سليم وجرّب تاني.",
   slides_failed: "الشرائح مقدرناش نقراها — اتأكد إن ملف الـ PDF سليم وجرّب تاني.",
   document_failed: "حصلت مشكلة وإحنا بنكتب المستند — جرّب تاني.",
+  model_busy:
+    "خدمة جوجل مزحومة دلوقتي — استنى شوية ودوس «جرّب تاني»، وهيكمّل من مكانه.",
   upstream_timeout:
     "جوجل مردّش علينا في الوقت المناسب — دوس «جرّب تاني» وهيكمّل من مكانه.",
   stage_too_slow:
