@@ -4,15 +4,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-const STUCK_AFTER_MS = 3 * 60_000;
-
 /**
- * Frees a lecture whose run died without recording anything.
+ * Stops a lecture the teacher no longer wants running.
  *
- * A teacher cannot do this themselves: column grants deliberately stop the
- * browser from writing `status`, so the escape hatch has to run server-side.
- * Completed stages are left alone, so this releases the lecture rather than
- * discarding the work already paid for.
+ * This cannot claw back a call already in flight with Google — that request
+ * will finish on its own. What it does is stop anything *further* from being
+ * started: the page stops driving the next stage, and the pipeline refuses to
+ * begin one. Whatever the in-flight stage produces is still saved, since it has
+ * already been paid for and discarding it would only mean redoing it later.
  */
 export async function POST(
   _request: Request,
@@ -28,10 +27,9 @@ export async function POST(
     return NextResponse.json({ error: "غير مسجّل دخول." }, { status: 401 });
   }
 
-  // RLS decides visibility: a lecture in someone else's subject is simply absent.
   const { data: lecture } = await supabase
     .from("lectures")
-    .select("id, status, stage_updated_at")
+    .select("id, status")
     .eq("id", id)
     .maybeSingle();
 
@@ -42,20 +40,9 @@ export async function POST(
     return NextResponse.json({ error: "المحاضرة خلصت بالفعل." }, { status: 409 });
   }
 
-  // Only step in once a stage has genuinely stalled, so a run that is still
-  // working is never yanked out from under itself.
-  const stalledFor = Date.now() - new Date(lecture.stage_updated_at).getTime();
-  const releasable = lecture.status === "failed" || lecture.status === "stopped";
-  if (!releasable && stalledFor < STUCK_AFTER_MS) {
-    return NextResponse.json(
-      { error: "التحويل لسه شغال — استنى شوية." },
-      { status: 409 },
-    );
-  }
-
   await createAdminClient()
     .from("lectures")
-    .update({ status: "pending", error_message: null })
+    .update({ status: "stopped", error_message: null })
     .eq("id", id);
 
   return NextResponse.json({ ok: true });

@@ -6,7 +6,8 @@ export type LectureStatus =
   | "reading_slides"
   | "building"
   | "ready"
-  | "failed";
+  | "failed"
+  | "stopped";
 
 export type Profile = {
   id: string;

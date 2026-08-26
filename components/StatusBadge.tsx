@@ -7,7 +7,9 @@ export function StatusBadge({ status }: { status: LectureStatus }) {
       ? "bg-brand-soft text-brand-dark"
       : status === "failed"
         ? "bg-danger-soft text-danger"
-        : "bg-warn-soft text-warn";
+        : status === "stopped"
+          ? "bg-line text-muted"
+          : "bg-warn-soft text-warn";
 
   return (
     <span

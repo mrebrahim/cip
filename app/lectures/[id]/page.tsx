@@ -53,6 +53,7 @@ export default async function LecturePage({ params }: Params) {
         initialStatus={lecture.status as LectureStatus}
         initialError={lecture.error_message}
         initialStageSince={lecture.stage_updated_at}
+        subjectId={lecture.subject_id}
         documentMd={lecture.document_md}
       />
     </AppShell>

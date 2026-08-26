@@ -19,10 +19,12 @@ export function LectureView({
   initialStatus,
   initialError,
   initialStageSince,
+  subjectId,
   documentMd,
 }: {
   id: string;
   title: string;
+  subjectId: string;
   initialStatus: LectureStatus;
   initialError: string | null;
   initialStageSince: string;
@@ -34,6 +36,8 @@ export function LectureView({
   const [retrying, setRetrying] = useState(false);
   const [stageSince, setStageSince] = useState(initialStageSince);
   const [stuck, setStuck] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const driving = useRef(false);
   const [copied, setCopied] = useState(false);
   const kickedOff = useRef(false);
 
@@ -103,15 +107,52 @@ export function LectureView({
   }, [id, status, router]);
 
   async function drive() {
-    for (let pass = 0; pass < 5; pass++) {
-      try {
+    if (driving.current) return;
+    driving.current = true;
+    try {
+      for (let pass = 0; pass < 5; pass++) {
         const res = await fetch(`/api/lectures/${id}/process`, { method: "POST" });
-        const data = (await res.json()) as { done?: boolean };
-        if (!res.ok || data.done) return;
-      } catch {
-        return;
+        const data = (await res.json()) as { done?: boolean; status?: LectureStatus };
+        // "stopped" comes back when the teacher pressed stop mid-run; carrying
+        // on would restart the very thing they just stopped.
+        if (!res.ok || data.done || data.status === "stopped") return;
       }
+    } catch {
+      // The row carries the outcome; the poll surfaces it.
+    } finally {
+      driving.current = false;
     }
+  }
+
+  /** Stops anything further from starting. See the stop route for the caveat. */
+  async function stop() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/lectures/${id}/stop`, { method: "POST" });
+      if (res.ok) setStatus("stopped");
+    } catch {
+      // ignored: the poll reflects whatever actually landed
+    }
+    setBusy(false);
+    router.refresh();
+  }
+
+  /** Deletes the lecture outright. RLS allows only the author or an admin. */
+  async function remove() {
+    if (!confirm("هتمسح المحاضرة دي نهائي. متأكد؟")) return;
+    setBusy(true);
+    const { error: delError } = await createClient()
+      .from("lectures")
+      .delete()
+      .eq("id", id);
+
+    if (delError) {
+      setBusy(false);
+      setError("مقدرناش نمسح المحاضرة — جرّب تاني.");
+      return;
+    }
+    router.replace(`/subjects/${subjectId}`);
+    router.refresh();
   }
 
   /** The escape hatch: release a frozen lecture, then drive it again. */
@@ -151,6 +192,43 @@ export function LectureView({
     setTimeout(() => setCopied(false), 2000);
   }
 
+
+  /** Delete is offered in every state; the other two depend on what is running. */
+  function DeleteButton() {
+    return (
+      <button
+        type="button"
+        onClick={remove}
+        disabled={busy}
+        className="min-h-12 rounded-xl px-4 text-base font-semibold text-danger transition hover:bg-danger-soft disabled:opacity-60"
+      >
+        إلغاء المحاضرة
+      </button>
+    );
+  }
+
+  if (status === "stopped") {
+    return (
+      <div className="rounded-2xl border border-line bg-card p-6">
+        <p className="font-semibold">التحويل متوقف.</p>
+        <p className="mt-2 text-sm text-muted">
+          اللي خلص اتحفظ. لما تكمّل هيبدأ من آخر خطوة خلصت.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={restart}
+            disabled={retrying || busy}
+            className={buttonStyles.primary}
+          >
+            {retrying ? "بنكمّل…" : "كمّل التحويل"}
+          </button>
+          <DeleteButton />
+        </div>
+      </div>
+    );
+  }
+
   if (status === "failed") {
     return (
       <div className="rounded-2xl border border-line bg-card p-6">
@@ -160,14 +238,17 @@ export function LectureView({
         <p className="mt-4 text-sm text-muted">
           لو كملنا شغل قبل كده، هنكمل من عند آخر خطوة خلصت مش من الأول.
         </p>
-        <button
-          type="button"
-          onClick={retry}
-          disabled={retrying}
-          className={`${buttonStyles.primary} mt-5`}
-        >
-          {retrying ? "بنجرّب…" : "جرّب تاني"}
-        </button>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={retry}
+            disabled={retrying || busy}
+            className={buttonStyles.primary}
+          >
+            {retrying ? "بنجرّب…" : "جرّب تاني"}
+          </button>
+          <DeleteButton />
+        </div>
       </div>
     );
   }
@@ -186,7 +267,7 @@ export function LectureView({
             <button
               type="button"
               onClick={restart}
-              disabled={retrying}
+              disabled={retrying || busy}
               className={`${buttonStyles.primary} mt-4`}
             >
               {retrying ? "بنعيد…" : "أعد التشغيل"}
@@ -201,6 +282,18 @@ export function LectureView({
             تعيد بيه التشغيل — ومش هيبدأ من الأول.
           </p>
         )}
+
+        <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-5">
+          <button
+            type="button"
+            onClick={stop}
+            disabled={busy}
+            className={buttonStyles.secondary}
+          >
+            إيقاف
+          </button>
+          <DeleteButton />
+        </div>
       </div>
     );
   }
@@ -214,6 +307,7 @@ export function LectureView({
         <button type="button" onClick={copyDocument} className={buttonStyles.secondary}>
           {copied ? "اتنسخ ✓" : "انسخ النص"}
         </button>
+        <DeleteButton />
       </div>
 
       <article className="rounded-2xl border border-line bg-card p-6 sm:p-8">

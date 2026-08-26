@@ -31,6 +31,10 @@ export async function runNextStage(lectureId: string): Promise<LectureStatus> {
   const lecture = data as Lecture & { subjects: { name: string } | null };
   if (lecture.status === "ready" && lecture.document_md) return "ready";
 
+  // The teacher stopped it. A request already in flight when they pressed stop
+  // must not quietly start the next stage.
+  if (lecture.status === "stopped") return "stopped";
+
   const setStage = (status: LectureStatus) =>
     db.from("lectures").update({ status, error_message: null }).eq("id", lectureId);
 

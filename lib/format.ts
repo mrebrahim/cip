@@ -51,6 +51,7 @@ export const STATUS_LABEL: Record<LectureStatus, string> = {
   building: "بنكتب المستند",
   ready: "جاهز",
   failed: "وقف",
+  stopped: "متوقف",
 };
 
 export const STAGE_ORDER: LectureStatus[] = [
@@ -62,5 +63,5 @@ export const STAGE_ORDER: LectureStatus[] = [
 ];
 
 export function isRunning(status: LectureStatus) {
-  return status !== "ready" && status !== "failed";
+  return status !== "ready" && status !== "failed" && status !== "stopped";
 }
