@@ -3,7 +3,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { processLecture } from "@/lib/pipeline";
 
 export const runtime = "nodejs";
-export const maxDuration = 800;
+// Fluid Compute must be enabled on Vercel. 300s is the Hobby ceiling; the Pro
+// plan allows 800, which is what a two-hour lecture really wants. Raise this
+// (and the cron schedule in vercel.json) after upgrading — nothing else needs
+// to change, because a cut-off run resumes from its last completed stage.
+export const maxDuration = 300;
 
 const STALLED_AFTER_MINUTES = 15;
 const MAX_PER_RUN = 3;

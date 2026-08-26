@@ -110,8 +110,12 @@ export function LectureView({
     return (
       <div className="rounded-2xl border border-line bg-card p-6">
         <StageIndicator status={status} />
+        {/* Honest under either Vercel plan. On Pro the cron sweep resumes a
+            dropped run within minutes; on Hobby it may not, so the promise is
+            "it will not start over", which is true regardless. */}
         <p className="mt-6 rounded-xl bg-sand px-4 py-3 text-sm text-muted">
-          تقدر تقفل الصفحة دلوقتي وترجع بعدين — المستند هيكون مستنيك هنا.
+          تقدر تقفل الصفحة وترجع بعدين. ولو لقيت التحويل وقف، دوس «جرّب تاني»
+          وهيكمّل من مكانه — مش هيبدأ من الأول.
         </p>
       </div>
     );

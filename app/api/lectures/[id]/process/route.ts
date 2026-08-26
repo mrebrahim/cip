@@ -4,9 +4,11 @@ import { processLecture } from "@/lib/pipeline";
 import { toAppError } from "@/lib/errors";
 
 export const runtime = "nodejs";
-// Fluid Compute must be enabled on Vercel for this to hold: a long lecture
-// runs well past the default 60s and would otherwise be cut mid-transcription.
-export const maxDuration = 800;
+// Fluid Compute must be enabled on Vercel. 300s is the Hobby ceiling; the Pro
+// plan allows 800, which is what a two-hour lecture really wants. Raise this
+// (and the cron schedule in vercel.json) after upgrading — nothing else needs
+// to change, because a cut-off run resumes from its last completed stage.
+export const maxDuration = 300;
 
 export async function POST(
   _request: Request,

@@ -158,18 +158,30 @@ Every account after that is created from `/admin`.
 
 ### 6. Vercel
 
-Two settings are not optional:
+**Fluid Compute must be enabled.** Processing runs well past the default 60
+seconds, and without Fluid Compute the request is cut off mid-transcription.
 
-- **Fluid Compute must be enabled.** Processing a long lecture runs well past
-  60 seconds; the routes declare `maxDuration = 800`, and without Fluid Compute
-  the request is cut off mid-transcription.
-- **Cron requires the Pro plan.** `vercel.json` schedules `/api/cron/retry`
-  every 5 minutes. The Hobby plan caps cron at once per day, which is far too
-  slow to be a safety net.
+The repo is currently configured for the **Hobby** plan:
 
-The cron job resumes anything that has sat in the same stage for over 15
-minutes — a teacher closing the browser, or a dropped request. It is what makes
-the waiting screen's promise ("you can close this page") true.
+| | Hobby (current) | Pro |
+|---|---|---|
+| `maxDuration` | 300s | 800s |
+| Cron frequency | once a day | every 5 minutes |
+
+The PRD asks for the Pro settings, and a two-hour lecture really wants them.
+Moving up is a two-line change:
+
+1. `maxDuration = 800` in `app/api/lectures/[id]/process/route.ts` and
+   `app/api/cron/retry/route.ts`
+2. `"schedule": "*/5 * * * *"` in `vercel.json`
+
+Nothing else changes, because every stage is persisted as it completes: a run
+that gets cut off resumes from its last success rather than starting over. On
+Hobby that resume is usually triggered by the teacher pressing "جرّب تاني"; on
+Pro the cron sweep does it within minutes without anyone noticing.
+
+This is why the waiting screen promises "it will not start over" rather than
+"you can close this and forget about it" — the first is true on either plan.
 
 ---
 
