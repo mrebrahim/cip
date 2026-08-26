@@ -21,6 +21,8 @@ export type ErrorCode =
   | "slides_failed"
   | "document_failed"
   | "output_truncated"
+  | "upstream_timeout"
+  | "stage_too_slow"
   | "unknown";
 
 const MESSAGES: Record<ErrorCode, string> = {
@@ -47,6 +49,10 @@ const MESSAGES: Record<ErrorCode, string> = {
     "التسجيل مقدرناش نفرّغه — اتأكد إن الملف صوت سليم وجرّب تاني.",
   slides_failed: "الشرائح مقدرناش نقراها — اتأكد إن ملف الـ PDF سليم وجرّب تاني.",
   document_failed: "حصلت مشكلة وإحنا بنكتب المستند — جرّب تاني.",
+  upstream_timeout:
+    "جوجل مردّش علينا في الوقت المناسب — دوس «جرّب تاني» وهيكمّل من مكانه.",
+  stage_too_slow:
+    "الخطوة دي خدت وقت أطول من المسموح — دوس «جرّب تاني» وهيكمّل من مكانه.",
   output_truncated:
     "المحاضرة دي أطول من اللي نقدر نحوّله مرة واحدة — قسّمها لجزئين وحوّل كل جزء لوحده.",
   unknown: "حصلت مشكلة مش متوقعة — جرّب تاني، ولو فضلت اكلّم المسؤول.",

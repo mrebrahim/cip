@@ -11,23 +11,29 @@ import { StageIndicator } from "./StageIndicator";
 
 const POLL_MS = 4000;
 
+const STUCK_AFTER_MS = 3 * 60_000;
+
 export function LectureView({
   id,
   title,
   initialStatus,
   initialError,
+  initialStageSince,
   documentMd,
 }: {
   id: string;
   title: string;
   initialStatus: LectureStatus;
   initialError: string | null;
+  initialStageSince: string;
   documentMd: string | null;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<LectureStatus>(initialStatus);
   const [error, setError] = useState<string | null>(initialError);
   const [retrying, setRetrying] = useState(false);
+  const [stageSince, setStageSince] = useState(initialStageSince);
+  const [stuck, setStuck] = useState(false);
   const [copied, setCopied] = useState(false);
   const kickedOff = useRef(false);
 
@@ -70,7 +76,7 @@ export function LectureView({
     const timer = setInterval(async () => {
       const { data } = await supabase
         .from("lectures")
-        .select("status, error_message")
+        .select("status, error_message, stage_updated_at")
         .eq("id", id)
         .maybeSingle();
 
@@ -79,6 +85,14 @@ export function LectureView({
       const next = data.status as LectureStatus;
       setError(data.error_message);
       setStatus(next);
+      if (data.stage_updated_at) setStageSince(data.stage_updated_at);
+
+      // A run that died without writing anything leaves the stage frozen. The
+      // spinner alone would keep implying progress that is not happening.
+      setStuck(
+        Date.now() - new Date(data.stage_updated_at ?? stageSince).getTime() >
+          STUCK_AFTER_MS,
+      );
 
       // The document itself is fetched by a server render rather than pulled
       // through the poll, so the poll stays small however long the text is.
@@ -88,22 +102,43 @@ export function LectureView({
     return () => clearInterval(timer);
   }, [id, status, router]);
 
+  async function drive() {
+    for (let pass = 0; pass < 5; pass++) {
+      try {
+        const res = await fetch(`/api/lectures/${id}/process`, { method: "POST" });
+        const data = (await res.json()) as { done?: boolean };
+        if (!res.ok || data.done) return;
+      } catch {
+        return;
+      }
+    }
+  }
+
+  /** The escape hatch: release a frozen lecture, then drive it again. */
+  async function restart() {
+    setRetrying(true);
+    setError(null);
+    setStuck(false);
+    setStatus("pending");
+
+    try {
+      const res = await fetch(`/api/lectures/${id}/reset`, { method: "POST" });
+      if (res.ok) await drive();
+    } catch {
+      // The row carries the outcome; the poll will surface it.
+    }
+
+    setRetrying(false);
+    router.refresh();
+  }
+
   async function retry() {
     setRetrying(true);
     setError(null);
     setStatus("pending");
 
-    // Same one-stage-per-call loop as the initial run, starting from whichever
-    // stage last succeeded rather than from the beginning.
-    for (let pass = 0; pass < 5; pass++) {
-      try {
-        const res = await fetch(`/api/lectures/${id}/process`, { method: "POST" });
-        const data = (await res.json()) as { done?: boolean };
-        if (!res.ok || data.done) break;
-      } catch {
-        break;
-      }
-    }
+    // Resumes from whichever stage last succeeded, not from the beginning.
+    await drive();
 
     setRetrying(false);
     router.refresh();
@@ -141,13 +176,31 @@ export function LectureView({
     return (
       <div className="rounded-2xl border border-line bg-card p-6">
         <StageIndicator status={status} />
-        {/* Honest under either Vercel plan. On Pro the cron sweep resumes a
-            dropped run within minutes; on Hobby it may not, so the promise is
-            "it will not start over", which is true regardless. */}
-        <p className="mt-6 rounded-xl bg-sand px-4 py-3 text-sm text-muted">
-          تقدر تقفل الصفحة وترجع بعدين. ولو لقيت التحويل وقف، دوس «جرّب تاني»
-          وهيكمّل من مكانه — مش هيبدأ من الأول.
-        </p>
+        {stuck ? (
+          /* The run died without recording anything, so the stage is frozen.
+             Saying so plainly beats a spinner that implies work in progress. */
+          <div className="mt-6 rounded-xl bg-warn-soft px-4 py-4">
+            <p className="text-sm font-semibold text-warn">
+              الخطوة دي واقفة من فترة — على الأغلب التحويل اتقطع.
+            </p>
+            <button
+              type="button"
+              onClick={restart}
+              disabled={retrying}
+              className={`${buttonStyles.primary} mt-4`}
+            >
+              {retrying ? "بنعيد…" : "أعد التشغيل"}
+            </button>
+            <p className="mt-3 text-sm text-muted">
+              هيكمّل من آخر خطوة خلصت، مش من الأول.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-6 rounded-xl bg-sand px-4 py-3 text-sm text-muted">
+            تقدر تقفل الصفحة وترجع بعدين. ولو لقيت التحويل وقف، هيظهرلك زرار
+            تعيد بيه التشغيل — ومش هيبدأ من الأول.
+          </p>
+        )}
       </div>
     );
   }

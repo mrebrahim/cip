@@ -1,4 +1,5 @@
 import { AppError } from "./errors";
+import { fetchWithTimeout } from "./http";
 import { driveAccessToken } from "./google-auth";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
@@ -104,7 +105,10 @@ async function authHeaders() {
 /** Reads a file's metadata — the cheap check that runs before a lecture row exists. */
 export async function getDriveFile(fileId: string): Promise<DriveFile> {
   const url = `${DRIVE_API}/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size&supportsAllDrives=true`;
-  const res = await fetch(url, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(url, {
+    headers: await authHeaders(),
+    timeoutMs: 30_000,
+  });
 
   if (!res.ok) throw translateDriveError(res.status, await res.text());
 
@@ -158,7 +162,10 @@ export async function validateDriveLink(
  */
 export async function downloadDriveFile(fileId: string): Promise<ArrayBuffer> {
   const url = `${DRIVE_API}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
-  const res = await fetch(url, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(url, {
+    headers: await authHeaders(),
+    timeoutMs: 120_000,
+  });
   if (!res.ok) throw translateDriveError(res.status, await res.text());
   return res.arrayBuffer();
 }

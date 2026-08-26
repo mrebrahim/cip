@@ -20,7 +20,7 @@ export default async function LecturePage({ params }: Params) {
   const { data: lecture } = await supabase
     .from("lectures")
     .select(
-      "id, title, status, error_message, document_md, created_at, subject_id, subjects(name)",
+      "id, title, status, error_message, document_md, created_at, stage_updated_at, subject_id, subjects(name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -52,6 +52,7 @@ export default async function LecturePage({ params }: Params) {
         title={lecture.title}
         initialStatus={lecture.status as LectureStatus}
         initialError={lecture.error_message}
+        initialStageSince={lecture.stage_updated_at}
         documentMd={lecture.document_md}
       />
     </AppShell>

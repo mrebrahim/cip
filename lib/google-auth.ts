@@ -1,5 +1,6 @@
 import { createSign } from "node:crypto";
 import { AppError } from "./errors";
+import { fetchWithTimeout } from "./http";
 
 /**
  * Drive access token, minted from a service account.
@@ -91,7 +92,8 @@ export async function driveAccessToken(): Promise<string> {
 
   const account = serviceAccount();
 
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetchWithTimeout(TOKEN_URL, {
+    timeoutMs: 15_000,
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

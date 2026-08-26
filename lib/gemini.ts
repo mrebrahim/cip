@@ -1,4 +1,5 @@
 import { AppError } from "./errors";
+import { fetchWithTimeout, makeDeadline } from "./http";
 
 const MODEL = "gemini-2.5-flash";
 const BASE = "https://generativelanguage.googleapis.com";
@@ -23,7 +24,8 @@ export async function uploadFile(
   mimeType: string,
   displayName: string,
 ): Promise<string> {
-  const start = await fetch(`${BASE}/upload/v1beta/files?key=${apiKey()}`, {
+  const start = await fetchWithTimeout(`${BASE}/upload/v1beta/files?key=${apiKey()}`, {
+    timeoutMs: 30_000,
     method: "POST",
     headers: {
       "X-Goog-Upload-Protocol": "resumable",
@@ -42,7 +44,8 @@ export async function uploadFile(
   const uploadUrl = start.headers.get("x-goog-upload-url");
   if (!uploadUrl) throw new AppError("unknown", "files api returned no upload url");
 
-  const upload = await fetch(uploadUrl, {
+  const upload = await fetchWithTimeout(uploadUrl, {
+    timeoutMs: 180_000,
     method: "POST",
     headers: {
       "Content-Length": String(bytes.byteLength),
@@ -70,7 +73,9 @@ async function waitUntilActive(name: string, initialState: string) {
   let state = initialState;
   for (let attempt = 0; attempt < 60 && state === "PROCESSING"; attempt++) {
     await sleep(2000);
-    const res = await fetch(`${BASE}/v1beta/${name}?key=${apiKey()}`);
+    const res = await fetchWithTimeout(`${BASE}/v1beta/${name}?key=${apiKey()}`, {
+      timeoutMs: 15_000,
+    });
     if (!res.ok) break;
     state = ((await res.json()) as { state: string }).state;
   }
@@ -87,8 +92,11 @@ type Part =
  */
 async function generate(
   parts: Part[],
-  opts: { maxOutputTokens: number; thinkingBudget: number },
+  opts: { maxOutputTokens: number; thinkingBudget: number; budgetMs?: number },
 ): Promise<string> {
+  // Retrying a slow call four times is how a stage silently outlives the whole
+  // request. The loop gets an overall budget, not just a per-attempt one.
+  const deadline = makeDeadline(opts.budgetMs ?? 220_000);
   const body = JSON.stringify({
     contents: [{ role: "user", parts }],
     generationConfig: {
@@ -101,10 +109,16 @@ async function generate(
   let lastDetail = "";
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt > 0) await sleep(2000 * 2 ** (attempt - 1));
+    deadline.assertNotExceeded();
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${BASE}/v1beta/models/${MODEL}:generateContent?key=${apiKey()}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body },
+      {
+        timeoutMs: Math.max(15_000, deadline.remaining()),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      },
     );
 
     if (res.status === 429 || res.status >= 500) {
