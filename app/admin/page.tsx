@@ -10,6 +10,7 @@ export const metadata = { title: "الإدارة — محاضراتي" };
 type SubjectRow = {
   id: string;
   name: string;
+  diploma_id: string;
   diplomas: { name: string } | null;
   subject_teachers: {
     teacher_id: string;
@@ -35,12 +36,21 @@ export default async function AdminPage() {
       supabase.from("diplomas").select("id, name").order("name"),
       supabase
         .from("subjects")
-        .select("id, name, diplomas(name), subject_teachers(teacher_id, profiles(full_name, email))")
+        .select("id, name, diploma_id, diplomas(name), subject_teachers(teacher_id, profiles(full_name, email))")
         .order("name"),
       supabase.from("profiles").select("id, full_name, email").eq("role", "teacher").order("full_name"),
     ]);
 
   const subjects = (subjectData ?? []) as unknown as SubjectRow[];
+
+  // A diploma maps to exactly one subject, so once it has one there is nothing
+  // left to add for it.
+  const usedDiplomaIds = new Set(
+    subjects.map((subject) => subject.diploma_id).filter(Boolean),
+  );
+  const availableDiplomas = (diplomas ?? []).filter(
+    (diploma) => !usedDiplomaIds.has(diploma.id),
+  );
   const teachers = (teacherData ?? []).map((teacher) => ({
     id: teacher.id,
     label: teacher.full_name || teacher.email || teacher.id,
@@ -52,7 +62,7 @@ export default async function AdminPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card title="مادة جديدة">
-          <NewSubjectForm diplomas={diplomas ?? []} />
+          <NewSubjectForm diplomas={availableDiplomas} />
         </Card>
 
         <Card title="حساب مدرّس جديد">
@@ -78,7 +88,9 @@ export default async function AdminPage() {
           <ul className="space-y-3">
             {subjects.map((subject) => (
               <li key={subject.id} className="rounded-2xl border border-line bg-card p-5">
-                <p className="text-sm text-muted">{subject.diplomas?.name}</p>
+                {subject.diplomas?.name !== subject.name && (
+                  <p className="text-sm text-muted">{subject.diplomas?.name}</p>
+                )}
                 <p className="font-bold">{subject.name}</p>
 
                 {subject.subject_teachers.length === 0 ? (

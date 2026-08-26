@@ -47,8 +47,10 @@ export default async function SubjectPage({ params }: Params) {
         <Link href="/" className="text-sm font-semibold text-muted hover:text-ink">
           ← كل موادي
         </Link>
-        <p className="mt-3 text-sm text-muted">{diploma}</p>
-        <h1 className="text-2xl font-bold">{subject.name}</h1>
+        {diploma !== subject.name && (
+          <p className="mt-3 text-sm text-muted">{diploma}</p>
+        )}
+        <h1 className="mt-3 text-2xl font-bold">{subject.name}</h1>
       </div>
 
       {rows.length === 0 ? (

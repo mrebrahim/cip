@@ -19,24 +19,34 @@ export async function createSubject(
   await requireAdmin();
 
   const diplomaId = String(formData.get("diploma_id") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-
-  if (!diplomaId || !name) return { ok: false, message: "اختار الدبلومة واكتب اسم المادة." };
+  if (!diplomaId) return { ok: false, message: "اختار الدبلومة." };
 
   const supabase = await createClient();
+
+  // A diploma and its subject are the same thing here, so the subject takes
+  // the diploma's name rather than asking for one that would only ever be
+  // retyped identically.
+  const { data: diploma } = await supabase
+    .from("diplomas")
+    .select("name")
+    .eq("id", diplomaId)
+    .maybeSingle();
+
+  if (!diploma) return { ok: false, message: "الدبلومة دي مش موجودة." };
+
   const { error } = await supabase
     .from("subjects")
-    .insert({ diploma_id: diplomaId, name });
+    .insert({ diploma_id: diplomaId, name: diploma.name });
 
   if (error) {
     return {
       ok: false,
-      message: error.code === "23505" ? "المادة دي موجودة بالفعل." : "مقدرناش نضيف المادة.",
+      message: error.code === "23505" ? "الدبلومة دي متضافة بالفعل." : "مقدرناش نضيفها.",
     };
   }
 
   revalidatePath("/admin");
-  return { ok: true, message: "المادة اتضافت." };
+  return { ok: true, message: "اتضافت." };
 }
 
 export async function assignTeacher(

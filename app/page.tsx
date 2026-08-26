@@ -60,7 +60,9 @@ export default async function SubjectsPage() {
                   href={`/subjects/${subject.id}`}
                   className="block h-full rounded-2xl border border-line bg-card p-5 transition hover:border-brand hover:shadow-sm"
                 >
-                  <p className="text-sm text-muted">{subject.diplomas?.name}</p>
+                  {subject.diplomas?.name !== subject.name && (
+                    <p className="text-sm text-muted">{subject.diplomas?.name}</p>
+                  )}
                   <p className="mt-1 text-lg font-bold">{subject.name}</p>
                   <p className="mt-3 text-sm text-muted">
                     {count === 0

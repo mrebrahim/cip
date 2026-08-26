@@ -38,6 +38,12 @@ function Note({ result }: { result: ActionResult | null }) {
 export function NewSubjectForm({ diplomas }: { diplomas: { id: string; name: string }[] }) {
   const [result, action] = useActionState(createSubject, null);
 
+  // Every diploma already has its subject, so there is nothing to add and an
+  // empty dropdown would just look broken.
+  if (diplomas.length === 0) {
+    return <p className="text-muted">كل الدبلومات متضافة بالفعل.</p>;
+  }
+
   return (
     <form action={action} className="space-y-3">
       <select name="diploma_id" required className={FIELD} defaultValue="">
@@ -51,9 +57,8 @@ export function NewSubjectForm({ diplomas }: { diplomas: { id: string; name: str
         ))}
       </select>
 
-      <input name="name" required placeholder="اسم المادة" className={FIELD} />
       <Note result={result} />
-      <Submit label="ضيف المادة" />
+      <Submit label="ضيف" />
     </form>
   );
 }
